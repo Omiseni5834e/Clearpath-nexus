@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: Inter, system-ui, -apple-system, sans-serif;
+  --font-mono: SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  background: #0F2D59;
+  color: #e2e8f0;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-shimmer {
+  background-size: 200% 100%;
+  animation: shimmer 2.5s linear infinite;
+}
+
+.glass-panel {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.75));
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(100, 116, 139, 0.25);
+}
+
+.map-glow {
+  box-shadow:
+    0 0 0 1px rgba(59, 130, 246, 0.15),
+    0 20px 50px -12px rgba(15, 45, 89, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}

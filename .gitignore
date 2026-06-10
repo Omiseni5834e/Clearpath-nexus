@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.env
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+nexus_pg_data/
+
+# Expo / React Native
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+
+# Android
+android/.gradle/
+android/.idea/
+android/local.properties
+android/**/build/
+android/**/*.iml
+android/.cxx/
+android/captures/

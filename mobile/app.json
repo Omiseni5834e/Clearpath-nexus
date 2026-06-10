@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "ClearPath Nexus",
+    "slug": "clearpath-nexus",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "clearpath-nexus",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0F2D59"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.clearpath.nexus",
+      "config": {
+        "googleMapsApiKey": ""
+      },
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "ClearPath Nexus uses your location to snap the train onto the corridor and suggest remaining track."
+      }
+    },
+    "android": {
+      "package": "com.clearpath.nexus",
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
+      "config": {
+        "googleMaps": {
+          "apiKey": ""
+        }
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "clearpath-nexus-local"
+      }
+    }
+  }
+}
+
