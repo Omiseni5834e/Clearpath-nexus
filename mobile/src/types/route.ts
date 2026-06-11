@@ -16,10 +16,11 @@ export interface TrainLocationInput {
 }
 
 export type SegmentPhase = 'TRAVERSED' | 'CURRENT' | 'UPCOMING';
+export type RouteStatus = 'APPROVED' | 'CAUTION' | 'HARD_BLOCKED';
 
 export interface SegmentPath {
   id: string;
-  status: 'APPROVED' | 'HARD_BLOCKED';
+  status: RouteStatus;
   coordinates: [number, number][];
   phase?: SegmentPhase;
   label?: string;
@@ -36,7 +37,7 @@ export interface TrackSegmentDetail {
   maxWeight: number;
   congestion: number;
   historicalDelayHours: number;
-  clearanceStatus: 'APPROVED' | 'HARD_BLOCKED';
+  clearanceStatus: RouteStatus;
   advisory?: string;
 }
 
@@ -65,7 +66,7 @@ export interface ScoreBreakdown {
 
 export interface RouteEvaluateResponse {
   route_id: string;
-  status: 'APPROVED' | 'HARD_BLOCKED';
+  status: RouteStatus;
   reliability_score: number;
   blocking_segment_id?: string;
   estimated_hours?: number;

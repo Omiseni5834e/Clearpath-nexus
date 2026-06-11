@@ -1,9 +1,8 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { CONDITION_SYMBOLS, CATEGORY_COLORS, type ConditionCategory, type ConditionType } from '../maps/conditionSymbols';
-import { colors } from '../theme/colors';
-import { ConditionIconVector } from './ConditionIcon';
+import React, { useState, useRef } from 'react';
+import { StyleSheet, View, Text, Animated, Pressable } from 'react-native';
+import { GlassCard } from './GlassCard';
 
-interface Props {
+interface MapLegendProps {
   routeLabel?: string;
   conditionCount?: number;
   liveWeatherUpdated?: Date | null;
@@ -11,193 +10,119 @@ interface Props {
   onToggle?: () => void;
 }
 
-const CATEGORY_ORDER: ConditionCategory[] = ['weather', 'environmental', 'operational'];
-
-const CATEGORY_LABELS: Record<ConditionCategory, string> = {
-  weather: 'Weather conditions',
-  environmental: 'Environmental alerts',
-  operational: 'Operational status',
-};
-
-export default function MapLegend({
+export const MapLegend: React.FC<MapLegendProps> = ({
   routeLabel,
   conditionCount = 0,
   liveWeatherUpdated,
-  collapsed = false,
+  collapsed,
   onToggle,
-}: Props) {
-  const grouped = CATEGORY_ORDER.map((cat) => ({
-    cat,
-    items: Object.entries(CONDITION_SYMBOLS).filter(([, s]) => s.category === cat),
-  }));
+}) => {
+  const [localExpanded, setLocalExpanded] = useState(false);
+  const animationValue = useRef(new Animated.Value(0)).current;
+  const expanded = collapsed == null ? localExpanded : !collapsed;
 
-  if (collapsed) {
-    return (
-      <View style={styles.collapsed}>
-        <Pressable style={styles.expandBtn} onPress={onToggle} accessibilityLabel="Expand symbol legend">
-          <Text style={styles.expandIcon}>?</Text>
+  const toggleLegend = () => {
+    const toValue = expanded ? 0 : 1;
+    Animated.timing(animationValue, {
+      toValue,
+      duration: 250,
+      useNativeDriver: false,
+    }).start();
+    if (onToggle) onToggle();
+    else setLocalExpanded(!expanded);
+  };
+
+  const height = animationValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [36, 160],
+  });
+
+  return (
+    <Animated.View style={[styles.container, { height }]}>
+      <GlassCard size="small" style={styles.card}>
+        <Pressable onPress={toggleLegend} style={styles.header}>
+          <Text style={styles.headerText}>Legend {expanded ? '▼' : '▲'}</Text>
         </Pressable>
-        <Text style={styles.collapsedLabel}>LEGEND</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.sidebar}>
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <View style={styles.liveRow}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>LIVE OVERLAY</Text>
-          </View>
-          <Pressable onPress={onToggle} hitSlop={8}>
-            <Text style={styles.hideBtn}>Hide</Text>
-          </Pressable>
-        </View>
-        <Text style={styles.liveSub}>
-          {liveWeatherUpdated
-            ? `Updated ${liveWeatherUpdated.toLocaleTimeString()}`
-            : 'Fetching conditions…'}
-        </Text>
-        {routeLabel ? (
-          <View style={styles.routeBox}>
-            <Text style={styles.routeLabel}>CORRIDOR</Text>
-            <Text style={styles.routeValue} numberOfLines={2}>{routeLabel}</Text>
-          </View>
-        ) : null}
-      </View>
-
-      <Text style={styles.legendTitle}>SYMBOL PALETTE</Text>
-
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator>
-        <View style={styles.routeSection}>
-          <Text style={styles.sectionTitle}>Route lines</Text>
-          <LegendLine color={colors.approved} label="Approved segment" />
-          <LegendLine color={colors.blocked} label="Blocked segment" />
-          <LegendLine color="#63B3ED" label="Current segment" />
-        </View>
-
-        {grouped.map(({ cat, items }) => (
-          <View key={cat} style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={[styles.catDot, { backgroundColor: CATEGORY_COLORS[cat].dot }]} />
-              <Text style={[styles.sectionTitle, { color: CATEGORY_COLORS[cat].stroke }]}>
-                {CATEGORY_LABELS[cat]}
-              </Text>
+        {expanded && (
+          <View style={styles.content}>
+            <View style={styles.row}>
+              <View style={[styles.colorBox, { backgroundColor: '#00FF88' }]} />
+              <Text style={styles.legendText}>Approved</Text>
             </View>
-            {items.map(([type, sym]) => (
-              <View key={type} style={styles.symbolRow}>
-                <ConditionIconVector type={type as ConditionType} size={22} />
-                <View style={styles.symbolCopy}>
-                  <Text style={styles.symbolTitle}>{sym.label}</Text>
-                  <Text style={styles.symbolDesc} numberOfLines={2}>{sym.detail}</Text>
-                </View>
-              </View>
-            ))}
+            <View style={styles.row}>
+              <View style={[styles.colorBox, { backgroundColor: '#FF8C00' }]} />
+              <Text style={styles.legendText}>Caution</Text>
+            </View>
+            <View style={styles.row}>
+              <View style={[styles.colorBox, { backgroundColor: '#FF3B5C' }]} />
+              <Text style={styles.legendText}>Hard Blocked</Text>
+            </View>
+            <View style={styles.divider} />
+            <Text style={styles.weatherScale}>Weather: 1.0 (Optimal) - 0.2 (Storm)</Text>
+            {routeLabel ? <Text style={styles.weatherScale}>{routeLabel}</Text> : null}
+            {liveWeatherUpdated ? <Text style={styles.weatherScale}>Updated {liveWeatherUpdated.toLocaleTimeString()}</Text> : null}
+            {conditionCount > 0 ? <Text style={styles.weatherScale}>{conditionCount} live markers</Text> : null}
           </View>
-        ))}
-      </ScrollView>
-
-      {conditionCount > 0 ? (
-        <Text style={styles.footer}>
-          {conditionCount} live marker{conditionCount === 1 ? '' : 's'} on map
-        </Text>
-      ) : null}
-    </View>
+        )}
+      </GlassCard>
+    </Animated.View>
   );
-}
-
-function LegendLine({ color, label }: { color: string; label: string }) {
-  return (
-    <View style={styles.lineRow}>
-      <View style={[styles.lineSwatch, { backgroundColor: color }]} />
-      <Text style={styles.lineLabel}>{label}</Text>
-    </View>
-  );
-}
+};
 
 const styles = StyleSheet.create({
-  collapsed: {
-    width: 36,
-    backgroundColor: 'rgba(2, 6, 23, 0.94)',
-    borderRightWidth: 1,
-    borderRightColor: 'rgba(100, 116, 139, 0.35)',
-    alignItems: 'center',
-    paddingTop: 10,
-    gap: 12,
+  container: {
+    position: 'absolute',
+    bottom: 20,
+    left: 16,
+    width: 180,
+    zIndex: 10,
+    overflow: 'hidden',
   },
-  expandBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
+  card: {
+    flex: 1,
+    padding: 0,
+    borderRadius: 12,
+  },
+  header: {
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  expandIcon: { color: colors.textLight, fontWeight: '700', fontSize: 12 },
-  collapsedLabel: {
-    color: colors.muted,
-    fontSize: 8,
-    fontFamily: 'monospace',
+  headerText: {
+    color: '#F0F4FF',
+    fontSize: 11,
     fontWeight: '700',
-    transform: [{ rotate: '90deg' }],
-    width: 48,
-    textAlign: 'center',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
   },
-  sidebar: {
-    width: 200,
-    backgroundColor: 'rgba(2, 6, 23, 0.94)',
-    borderRightWidth: 1,
-    borderRightColor: 'rgba(100, 116, 139, 0.35)',
-    paddingTop: 8,
-    paddingBottom: 4,
+  content: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    gap: 8,
   },
-  header: {
-    paddingHorizontal: 10,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(100,116,139,0.25)',
-    gap: 4,
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  liveRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.approved },
-  liveText: { color: '#6EE7B7', fontSize: 8, fontFamily: 'monospace', fontWeight: '700', letterSpacing: 0.5 },
-  hideBtn: { color: colors.muted, fontSize: 9, fontFamily: 'monospace' },
-  liveSub: { color: colors.muted, fontSize: 8, fontFamily: 'monospace' },
-  routeBox: { marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(100,116,139,0.2)' },
-  routeLabel: { color: colors.textLight, fontSize: 8, fontFamily: 'monospace' },
-  routeValue: { color: colors.white, fontSize: 11, fontWeight: '700', fontFamily: 'monospace', marginTop: 2 },
-  legendTitle: {
-    color: colors.muted,
-    fontSize: 8,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+  colorBox: {
+    width: 12,
+    height: 12,
+    borderRadius: 3,
   },
-  scroll: { flex: 1 },
-  routeSection: { paddingHorizontal: 10, marginBottom: 12, gap: 4 },
-  section: { paddingHorizontal: 10, marginBottom: 12, gap: 6 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
-  catDot: { width: 6, height: 6, borderRadius: 3 },
-  sectionTitle: { fontSize: 9, fontFamily: 'monospace', fontWeight: '700', textTransform: 'uppercase' },
-  symbolRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 6 },
-  symbolCopy: { flex: 1, gap: 1 },
-  symbolTitle: { color: colors.white, fontSize: 10, fontWeight: '600' },
-  symbolDesc: { color: colors.muted, fontSize: 8, lineHeight: 11 },
-  lineRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3 },
-  lineSwatch: { width: 18, height: 3, borderRadius: 2 },
-  lineLabel: { color: colors.textLight, fontSize: 9, fontFamily: 'monospace' },
-  footer: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(100,116,139,0.25)',
-    color: colors.muted,
-    fontSize: 8,
-    fontFamily: 'monospace',
+  legendText: {
+    color: '#8892A4',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    marginVertical: 4,
+  },
+  weatherScale: {
+    color: '#8892A4',
+    fontSize: 9,
+    fontWeight: '500',
   },
 });

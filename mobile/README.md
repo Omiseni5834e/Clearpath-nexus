@@ -12,7 +12,7 @@ Run on your **physical phone** with the **Expo Go** app. No Android Studio, no D
 **Windows PowerShell** (if `npm` is blocked by execution policy):
 
 ```powershell
-cd E:\clearpath-nexus\mobile
+cd mobile
 npm.cmd install
 npx.cmd expo start
 ```

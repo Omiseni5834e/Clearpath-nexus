@@ -9,14 +9,12 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "dev-secret-key-change-in-production"
     PROJECT_NAME: str = "ClearPath Nexus Engine"
 
-    POSTGRES_USER: str = "nexus_admin"
-    POSTGRES_PASSWORD: str = "VaultLockPass2026!"
+    POSTGRES_USER: str = "clearpath_user"
+    POSTGRES_PASSWORD: str = "change_me"
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "clearpath_nexus_db"
-    DATABASE_URL: str = (
-        "postgresql+asyncpg://nexus_admin:VaultLockPass2026!@localhost:5432/clearpath_nexus_db"
-    )
+    DATABASE_URL: str = ""
 
     REDIS_HOST: str = "127.0.0.1"
     REDIS_PORT: int = 6379
@@ -41,3 +39,9 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+if not settings.DATABASE_URL:
+    settings.DATABASE_URL = (
+        f"postgresql+asyncpg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}"
+        f"@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
+    )

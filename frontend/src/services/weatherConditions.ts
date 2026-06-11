@@ -1,5 +1,6 @@
 import type { ConditionType } from '../maps/conditionSymbols'
 import type { MapCondition, SegmentPath, Station } from '../types/route'
+import { API_BASE_URL } from './api'
 
 export interface OpenMeteoCurrent {
   temperature_2m: number
@@ -372,7 +373,7 @@ export async function fetchMapConditionsFromApi(
 ): Promise<MapCondition[] | null> {
   try {
     const points = sampleRoutePoints(segments, stations)
-    const resp = await fetch('/api/v1/weather/map-conditions', {
+    const resp = await fetch(`${API_BASE_URL}/weather/map-conditions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ points, destination_code: destinationCode }),

@@ -66,13 +66,11 @@ class TrainPosition(BaseModel):
     station_code: str | None = None
 
 
-class RouteSuggestResponse(RouteEvaluateResponse):
-    train_position: TrainPosition
-    remaining_km: float
-    eta_hours: float | None = None
-    track_details: list[TrackSegmentDetail] = []
-    alternate_routes: list[AlternateRoute] = []
-    next_station: str | None = None
+class ScoreBreakdown(BaseModel):
+    weather: float
+    port: float
+    congestion: float
+    historical: float
 
 
 class SegmentPathPoint(BaseModel):
@@ -88,13 +86,6 @@ class SegmentPathResponse(BaseModel):
     label: str | None = None
 
 
-class ScoreBreakdown(BaseModel):
-    weather: float
-    port: float
-    congestion: float
-    historical: float
-
-
 class RouteEvaluateResponse(BaseModel):
     route_id: UUID
     status: str
@@ -104,6 +95,15 @@ class RouteEvaluateResponse(BaseModel):
     score_breakdown: ScoreBreakdown | None = None
     segments: list[SegmentPathResponse] = []
     environmental_alerts: list[str] = []
+
+
+class RouteSuggestResponse(RouteEvaluateResponse):
+    train_position: TrainPosition
+    remaining_km: float
+    eta_hours: float | None = None
+    track_details: list[TrackSegmentDetail] = []
+    alternate_routes: list[AlternateRoute] = []
+    next_station: str | None = None
 
 
 class StationResponse(BaseModel):
