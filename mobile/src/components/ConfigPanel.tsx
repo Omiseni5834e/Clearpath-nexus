@@ -1,5 +1,10 @@
+import * as Haptics from 'expo-haptics';
+import { useCallback } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -7,11 +12,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import type { LocationMode, Station } from '../types/route';
-import type { LoadProfile } from '../types/loadProfile';
+import { palette } from '../theme';
 import { colors } from '../theme/colors';
-import StationPicker from './StationPicker';
+import type { LoadProfile } from '../types/loadProfile';
+import type { LocationMode, Station } from '../types/route';
 import { findNearestStation } from '../utils/nearestStation';
+import StationPicker from './StationPicker';
 
 interface Props {
   stations: Station[];
@@ -28,6 +34,7 @@ interface Props {
   routeApproved: boolean;
   hasResult: boolean;
   resultApproved: boolean;
+  locatingNearest?: boolean;
   onLocationModeChange: (v: LocationMode) => void;
   onLocationStationChange: (v: string) => void;
   onLocationLatChange: (v: string) => void;
@@ -56,6 +63,7 @@ export default function ConfigPanel({
   routeApproved,
   hasResult,
   resultApproved,
+  locatingNearest = false,
   onLocationModeChange,
   onLocationStationChange,
   onLocationLatChange,
@@ -69,7 +77,6 @@ export default function ConfigPanel({
   onChangeProfile,
 }: Props) {
   const codes = stations.length > 0 ? stations.map((s) => s.code) : ['NGP', 'BSL', 'MMR', 'KYN', 'JNPT', 'PUNE'];
-
   const originCode = locationMode === 'station' ? locationStation : undefined;
   const lat = parseFloat(locationLat);
   const lon = parseFloat(locationLon);
@@ -79,182 +86,229 @@ export default function ConfigPanel({
       : null;
   const excludeOrigin = originCode ?? nearest?.station.code;
   const destConflict = !!excludeOrigin && destinations.every((d) => d === excludeOrigin);
+  const canApprove = hasResult && resultApproved && !routeApproved;
 
-  const updateDestination = (index: number, code: string) => {
+  const tap = useCallback(async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+
+  const updateDestination = useCallback((index: number, code: string) => {
     onDestinationsChange(destinations.map((d, i) => (i === index ? code : d)));
-  };
+  }, [destinations, onDestinationsChange]);
 
-  const addDestination = () => {
+  const addDestination = useCallback(() => {
+    void tap();
+    if (destinations.length >= 5) return;
     const used = new Set(destinations);
     if (excludeOrigin) used.add(excludeOrigin);
     const next = codes.find((c) => !used.has(c));
     if (next) onDestinationsChange([...destinations, next]);
-  };
+  }, [codes, destinations, excludeOrigin, onDestinationsChange, tap]);
 
-  const removeDestination = (index: number) => {
+  const confirmRemoveDestination = useCallback((index: number) => {
     if (destinations.length <= 1) return;
-    onDestinationsChange(destinations.filter((_, i) => i !== index));
-  };
+    Alert.alert('Remove this stop from route?', undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => {
+          void tap();
+          onDestinationsChange(destinations.filter((_, i) => i !== index));
+        },
+      },
+    ]);
+  }, [destinations, onDestinationsChange, tap]);
+
+  const moveDestination = useCallback((index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= destinations.length) return;
+    const next = [...destinations];
+    const current = next[index];
+    next[index] = next[target];
+    next[target] = current;
+    onDestinationsChange(next);
+  }, [destinations, onDestinationsChange]);
 
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-      <Text style={styles.heading}>POSITION & ROUTING</Text>
+    <KeyboardAvoidingView style={styles.keyboard} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Text style={styles.heading}>ROUTE CONFIG</Text>
 
-      {loadProfile ? (
-        <View style={styles.profileBox}>
-          <View style={styles.profileHeader}>
-            <Text style={styles.profileLabel}>ACTIVE LOAD PROFILE</Text>
-            <Pressable onPress={onChangeProfile}>
-              <Text style={styles.changeLink}>Change</Text>
-            </Pressable>
-          </View>
-          <Text style={styles.profileName}>{loadProfile.name}</Text>
-          <Text style={styles.profileMeta}>
-            {loadProfile.height}m × {loadProfile.width}m · {loadProfile.weight}T ·{' '}
-            {loadProfile.compartments} compartment{loadProfile.compartments === 1 ? '' : 's'}
-          </Text>
-        </View>
-      ) : (
-        <Pressable style={styles.missingProfile} onPress={onChangeProfile}>
-          <Text style={styles.missingText}>Select a load profile first</Text>
-        </Pressable>
-      )}
-
-      <Text style={styles.sectionTitle}>Current train location</Text>
-      <View style={styles.modeRow}>
-        {(
-          [
-            ['station', 'At station'],
-            ['coordinates', 'Coordinates'],
-            ['live', 'Live GPS'],
-          ] as const
-        ).map(([mode, label]) => (
-          <Pressable
-            key={mode}
-            style={[styles.modeBtn, locationMode === mode && styles.modeBtnActive]}
-            onPress={() => onLocationModeChange(mode)}
-          >
-            <Text style={[styles.modeText, locationMode === mode && styles.modeTextActive]}>{label}</Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {locationMode === 'station' ? (
-        <StationPicker
-          label="Current station"
-          value={locationStation}
-          codes={codes}
-          stations={stations}
-          onChange={onLocationStationChange}
-        />
-      ) : null}
-
-      {locationMode === 'coordinates' ? (
-        <View style={styles.row}>
-          <Field label="Latitude" value={locationLat} onChange={onLocationLatChange} />
-          <Field label="Longitude" value={locationLon} onChange={onLocationLonChange} />
-        </View>
-      ) : null}
-
-      {locationMode === 'live' ? (
-        <View style={styles.liveBox}>
-          <Pressable style={styles.gpsBtn} onPress={onUseGpsOnce}>
-            <Text style={styles.gpsBtnText}>Capture GPS now</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.gpsBtn, liveTracking && styles.gpsBtnActive]}
-            onPress={onToggleLiveTracking}
-          >
-            <Text style={[styles.gpsBtnText, liveTracking && styles.gpsBtnTextActive]}>
-              {liveTracking ? 'Live tracking ON' : 'Start live tracking'}
+        {loadProfile ? (
+          <View style={styles.profileBox}>
+            <View style={styles.profileHeader}>
+              <Text style={styles.profileLabel}>ACTIVE LOAD PROFILE</Text>
+              <Pressable testID="change-profile-button" onPress={onChangeProfile}>
+                <Text style={styles.changeLink}>Change</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.profileName}>{loadProfile.name}</Text>
+            <Text style={styles.profileMeta}>
+              {loadProfile.height}m x {loadProfile.width}m / {loadProfile.weight}T / {loadProfile.compartments} compartment
+              {loadProfile.compartments === 1 ? '' : 's'}
             </Text>
-          </Pressable>
-          {(locationLat || locationLon) ? (
-            <Text style={styles.gpsCoords}>
-              Last fix: {locationLat || '—'}, {locationLon || '—'}
-            </Text>
-          ) : null}
-        </View>
-      ) : null}
-
-      {nearest ? (
-        <View style={styles.nearestBox}>
-          <Text style={styles.nearestLabel}>NEAREST RAILWAY STATION</Text>
-          <Text style={styles.nearestValue}>
-            {nearest.station.code} — {nearest.station.name}
-          </Text>
-          <Text style={styles.nearestMeta}>{nearest.distanceKm} km from current fix</Text>
-        </View>
-      ) : null}
-
-      <View style={styles.destHeader}>
-        <Text style={styles.label}>Destinations (in order)</Text>
-        <Pressable onPress={addDestination}>
-          <Text style={styles.addStop}>+ Add stop</Text>
-        </Pressable>
-      </View>
-
-      {destinations.map((dest, index) => (
-        <View key={`${index}-${dest}`} style={styles.destRow}>
-          <Text style={styles.destIndex}>{index + 1}</Text>
-          <View style={styles.destPicker}>
-            <StationPicker
-              label={`Stop ${index + 1}`}
-              value={dest}
-              codes={codes}
-              stations={stations}
-              onChange={(code) => updateDestination(index, code)}
-              excludeCode={excludeOrigin}
-            />
           </View>
-          {destinations.length > 1 ? (
-            <Pressable onPress={() => removeDestination(index)}>
-              <Text style={styles.removeStop}>Remove</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      ))}
-
-      {destConflict ? (
-        <Text style={styles.error}>Destination cannot match current origin.</Text>
-      ) : null}
-
-      <Text style={styles.label}>Train Arrival (hours from now)</Text>
-      <TextInput
-        style={styles.input}
-        value={trainHours}
-        onChangeText={onTrainHoursChange}
-        keyboardType="decimal-pad"
-      />
-
-      <Pressable
-        style={[styles.button, (loading || !loadProfile || destConflict) && styles.buttonDisabled]}
-        onPress={onEvaluate}
-        disabled={loading || !loadProfile || destConflict}
-      >
-        {loading ? (
-          <ActivityIndicator color={colors.white} />
         ) : (
-          <Text style={styles.buttonText}>Suggest Remaining Route</Text>
+          <Pressable testID="missing-profile-button" style={styles.missingProfile} onPress={onChangeProfile}>
+            <Text style={styles.missingText}>Select a load profile first</Text>
+          </Pressable>
         )}
-      </Pressable>
 
-      <Pressable
-        style={[
-          styles.approveBtn,
-          routeApproved && styles.approveBtnDone,
-          (!hasResult || !resultApproved) && styles.buttonDisabled,
-        ]}
-        onPress={onApproveRoute}
-        disabled={!hasResult || !resultApproved}
-      >
-        <Text style={[styles.approveText, routeApproved && styles.approveTextDone]}>
-          {routeApproved ? 'Route Approved' : 'Approve Route'}
-        </Text>
-      </Pressable>
+        <Text style={styles.sectionTitle}>FROM</Text>
+        <View style={styles.modeRow}>
+          {([
+            ['station', 'Station'],
+            ['coordinates', 'Coords'],
+            ['live', 'Live GPS'],
+          ] as const).map(([mode, label]) => (
+            <Pressable
+              testID={`location-mode-${mode}`}
+              key={mode}
+              style={[styles.modeBtn, locationMode === mode && styles.modeBtnActive]}
+              onPress={() => {
+                void tap();
+                onLocationModeChange(mode);
+              }}
+            >
+              <Text style={[styles.modeText, locationMode === mode && styles.modeTextActive]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-    </ScrollView>
+        {locationMode === 'station' ? (
+          <View style={styles.originRow}>
+            <View style={styles.originPicker}>
+              <StationPicker
+                label="Current station"
+                value={locationStation}
+                codes={codes}
+                stations={stations}
+                onChange={onLocationStationChange}
+              />
+            </View>
+            <Pressable
+              testID="use-my-location-button"
+              style={styles.locationPill}
+              onPress={() => {
+                void tap();
+                onUseGpsOnce();
+              }}
+            >
+              <Text style={styles.locationPillText}>{locatingNearest ? 'Locating...' : 'Use My Location'}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {locationMode === 'coordinates' ? (
+          <View style={styles.row}>
+            <Field label="Latitude" value={locationLat} onChange={onLocationLatChange} returnKeyType="next" />
+            <Field label="Longitude" value={locationLon} onChange={onLocationLonChange} returnKeyType="done" />
+          </View>
+        ) : null}
+
+        {locationMode === 'live' ? (
+          <View style={styles.liveBox}>
+            <Pressable testID="capture-gps-button" style={styles.secondaryBtn} onPress={onUseGpsOnce}>
+              <Text style={styles.secondaryText}>{locatingNearest ? 'Locating nearest station...' : 'Use My Location'}</Text>
+            </Pressable>
+            <Pressable
+              testID="toggle-live-tracking-button"
+              style={[styles.secondaryBtn, liveTracking && styles.liveActive]}
+              onPress={onToggleLiveTracking}
+            >
+              <Text style={[styles.secondaryText, liveTracking && styles.liveActiveText]}>
+                {liveTracking ? 'Live tracking ON' : 'Start live tracking'}
+              </Text>
+            </Pressable>
+            <Text style={styles.gpsCoords}>Last fix: {locationLat || '-'}, {locationLon || '-'}</Text>
+          </View>
+        ) : null}
+
+        {nearest ? (
+          <View style={styles.nearestBox}>
+            <Text style={styles.nearestLabel}>NEAREST RAILWAY STATION</Text>
+            <Text style={styles.nearestValue}>{nearest.station.code} - {nearest.station.name}</Text>
+            <Text style={styles.nearestMeta}>{nearest.distanceKm} km from current fix</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.destHeader}>
+          <Text style={styles.sectionTitle}>STOPS</Text>
+          <Pressable testID="add-stop-button" onPress={addDestination} disabled={destinations.length >= 5}>
+            <Text style={[styles.addStop, destinations.length >= 5 && styles.disabledText]}>Add Stop +</Text>
+          </Pressable>
+        </View>
+
+        {destinations.map((dest, index) => (
+          <View key={`${index}-${dest}`} style={styles.destCard}>
+            <View style={styles.dragColumn}>
+              <Pressable testID={`move-stop-${index}-up`} onPress={() => moveDestination(index, -1)} disabled={index === 0}>
+                <Text style={[styles.dragText, index === 0 && styles.disabledText]}>UP</Text>
+              </Pressable>
+              <Text style={styles.destIndex}>{index + 1}</Text>
+              <Pressable
+                testID={`move-stop-${index}-down`}
+                onPress={() => moveDestination(index, 1)}
+                disabled={index === destinations.length - 1}
+              >
+                <Text style={[styles.dragText, index === destinations.length - 1 && styles.disabledText]}>DN</Text>
+              </Pressable>
+            </View>
+            <View style={styles.destPicker}>
+              <StationPicker
+                label={`Stop ${index + 1}`}
+                value={dest}
+                codes={codes}
+                stations={stations}
+                onChange={(code) => updateDestination(index, code)}
+                excludeCode={excludeOrigin}
+              />
+            </View>
+            {destinations.length > 1 ? (
+              <Pressable testID={`remove-stop-${index}`} onPress={() => confirmRemoveDestination(index)} style={styles.removeBtn}>
+                <Text style={styles.removeText}>Delete</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ))}
+
+        {destConflict ? <Text style={styles.error}>Destination cannot match current origin.</Text> : null}
+
+        <Text style={styles.label}>Train Arrival (hours from now)</Text>
+        <TextInput
+          testID="train-hours-input"
+          style={styles.input}
+          value={trainHours}
+          onChangeText={onTrainHoursChange}
+          keyboardType="decimal-pad"
+          returnKeyType="done"
+          placeholderTextColor={colors.disabled}
+        />
+
+        <Pressable
+          testID="evaluate-route-button"
+          style={[styles.primaryBtn, (loading || !loadProfile || destConflict) && styles.buttonDisabled]}
+          onPress={onEvaluate}
+          disabled={loading || !loadProfile || destConflict}
+        >
+          {loading ? <ActivityIndicator color={palette.base} /> : <Text style={styles.primaryText}>Evaluate Route</Text>}
+        </Pressable>
+
+        <Pressable
+          testID="approve-route-panel-button"
+          style={[styles.approveBtn, routeApproved && styles.approveBtnDone, !canApprove && styles.buttonDisabled]}
+          onPress={onApproveRoute}
+          disabled={!canApprove}
+        >
+          <Text style={[styles.approveText, routeApproved && styles.approveTextDone]}>
+            {routeApproved ? 'Route Approved' : 'Approve Route'}
+          </Text>
+        </Pressable>
+
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -262,120 +316,161 @@ function Field({
   label,
   value,
   onChange,
+  returnKeyType,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  returnKeyType: 'next' | 'done';
 }) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput style={styles.input} value={value} onChangeText={onChange} keyboardType="decimal-pad" />
+      <TextInput
+        style={styles.input}
+        value={value}
+        onChangeText={onChange}
+        keyboardType="decimal-pad"
+        returnKeyType={returnKeyType}
+        placeholderTextColor={colors.disabled}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboard: { flex: 1 },
   scroll: { flex: 1 },
-  content: { padding: 16, gap: 12 },
-  heading: { color: colors.textLight, fontSize: 12, fontWeight: '700', letterSpacing: 1 },
-  sectionTitle: { color: colors.accent, fontSize: 11, fontFamily: 'monospace', fontWeight: '600', marginTop: 4 },
+  content: { padding: 16, gap: 12, paddingBottom: 32 },
+  heading: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1.5 },
+  sectionTitle: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1.5 },
   profileBox: {
     backgroundColor: colors.panel,
-    borderRadius: 10,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.accent,
-    padding: 12,
-    gap: 4,
+    borderColor: palette.glassBorder,
+    padding: 14,
+    gap: 5,
   },
   profileHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  profileLabel: { color: colors.accent, fontSize: 9, fontFamily: 'monospace', fontWeight: '700' },
-  changeLink: { color: colors.textLight, fontSize: 11, fontFamily: 'monospace' },
-  profileName: { color: colors.white, fontWeight: '700', fontSize: 14 },
-  profileMeta: { color: colors.muted, fontSize: 11, fontFamily: 'monospace' },
+  profileLabel: { color: colors.approved, fontSize: 10, fontWeight: '800', letterSpacing: 1.5 },
+  changeLink: { color: colors.textLight, fontSize: 12, fontWeight: '700' },
+  profileName: { color: colors.textLight, fontWeight: '800', fontSize: 15 },
+  profileMeta: { color: colors.muted, fontSize: 11 },
   missingProfile: {
     padding: 14,
-    borderRadius: 10,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.blocked,
     borderStyle: 'dashed',
     alignItems: 'center',
   },
-  missingText: { color: colors.blocked, fontSize: 12, fontFamily: 'monospace' },
+  missingText: { color: colors.blocked, fontSize: 12, fontWeight: '700' },
   row: { flexDirection: 'row', gap: 8 },
+  originRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
+  originPicker: { flex: 1 },
   field: { flex: 1 },
-  label: { color: colors.muted, fontSize: 11, fontFamily: 'monospace', marginBottom: 4 },
+  label: { color: colors.muted, fontSize: 11, marginBottom: 4 },
   input: {
-    backgroundColor: colors.panel,
+    backgroundColor: palette.input,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
+    borderColor: palette.glassBorder,
+    borderRadius: 12,
     padding: 10,
-    color: colors.white,
-    fontFamily: 'monospace',
+    color: colors.textLight,
   },
   modeRow: { flexDirection: 'row', gap: 6 },
   modeBtn: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.glassBorder,
     alignItems: 'center',
-    backgroundColor: colors.panel,
+    backgroundColor: palette.buttonSecondary,
   },
-  modeBtnActive: { borderColor: colors.accent, backgroundColor: 'rgba(49,130,206,0.15)' },
-  modeText: { color: colors.muted, fontSize: 10, fontFamily: 'monospace', fontWeight: '600' },
-  modeTextActive: { color: colors.accent },
+  modeBtnActive: { borderColor: colors.approved, backgroundColor: palette.glowGreen },
+  modeText: { color: colors.muted, fontSize: 11, fontWeight: '700' },
+  modeTextActive: { color: colors.approved },
+  locationPill: {
+    minHeight: 42,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+    backgroundColor: palette.buttonSecondary,
+  },
+  locationPillText: { color: colors.textLight, fontSize: 11, fontWeight: '800' },
   liveBox: { gap: 8 },
-  gpsBtn: {
+  secondaryBtn: {
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.glassBorder,
     alignItems: 'center',
-    backgroundColor: colors.panel,
+    backgroundColor: palette.buttonSecondary,
   },
-  gpsBtnActive: { borderColor: colors.approved, backgroundColor: 'rgba(56,161,105,0.12)' },
-  gpsBtnText: { color: colors.textLight, fontFamily: 'monospace', fontSize: 12, fontWeight: '600' },
-  gpsBtnTextActive: { color: colors.approved },
-  gpsCoords: { color: colors.muted, fontSize: 11, fontFamily: 'monospace' },
+  secondaryText: { color: colors.textLight, fontSize: 12, fontWeight: '800' },
+  liveActive: { borderColor: colors.approved, backgroundColor: palette.glowGreen },
+  liveActiveText: { color: colors.approved },
+  gpsCoords: { color: colors.muted, fontSize: 11 },
   nearestBox: {
     borderWidth: 1,
     borderColor: colors.accent,
-    borderRadius: 8,
-    padding: 10,
-    backgroundColor: 'rgba(49,130,206,0.1)',
-    gap: 2,
+    borderRadius: 20,
+    padding: 12,
+    backgroundColor: 'rgba(59,130,246,0.12)',
+    gap: 3,
   },
-  nearestLabel: { color: colors.accent, fontSize: 9, fontFamily: 'monospace', fontWeight: '700' },
-  nearestValue: { color: colors.white, fontSize: 12, fontFamily: 'monospace', fontWeight: '600' },
-  nearestMeta: { color: colors.muted, fontSize: 10, fontFamily: 'monospace' },
+  nearestLabel: { color: colors.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1.5 },
+  nearestValue: { color: colors.textLight, fontSize: 13, fontWeight: '800' },
+  nearestMeta: { color: colors.muted, fontSize: 11 },
   destHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  addStop: { color: colors.accent, fontSize: 10, fontFamily: 'monospace', fontWeight: '600' },
-  destRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
-  destIndex: { color: colors.muted, fontSize: 11, fontFamily: 'monospace', marginTop: 28, width: 16 },
+  addStop: { color: colors.approved, fontSize: 12, fontWeight: '800' },
+  disabledText: { color: colors.disabled },
+  destCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+    backgroundColor: colors.panel,
+    padding: 10,
+  },
+  dragColumn: { width: 28, alignItems: 'center', gap: 4 },
+  dragText: { color: colors.muted, fontSize: 9, fontWeight: '800' },
+  destIndex: { color: colors.textLight, fontSize: 14, fontWeight: '900' },
   destPicker: { flex: 1 },
-  removeStop: { color: colors.blocked, fontSize: 10, fontFamily: 'monospace', marginTop: 28 },
-  button: {
-    backgroundColor: colors.accent,
+  removeBtn: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: palette.destructiveBorder,
+    backgroundColor: palette.destructiveBg,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  removeText: { color: colors.blocked, fontSize: 11, fontWeight: '800' },
+  primaryBtn: {
+    backgroundColor: colors.approved,
     padding: 14,
-    borderRadius: 8,
+    borderRadius: 14,
     alignItems: 'center',
     marginTop: 4,
   },
+  primaryText: { color: palette.base, fontWeight: '900' },
   approveBtn: {
     borderWidth: 1,
     borderColor: colors.approved,
     padding: 14,
-    borderRadius: 8,
+    borderRadius: 14,
     alignItems: 'center',
-    backgroundColor: 'rgba(56,161,105,0.12)',
+    backgroundColor: palette.glowGreen,
   },
   approveBtnDone: { backgroundColor: colors.approved, borderColor: colors.approved },
-  approveText: { color: colors.approved, fontWeight: '700', fontFamily: 'monospace', fontSize: 13 },
-  approveTextDone: { color: colors.white },
-  buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: colors.white, fontWeight: '600' },
-  error: { color: colors.blocked, fontSize: 12, fontFamily: 'monospace' },
+  approveText: { color: colors.approved, fontWeight: '900', fontSize: 13 },
+  approveTextDone: { color: palette.base },
+  buttonDisabled: { opacity: 0.42 },
+  error: { color: colors.blocked, fontSize: 12 },
 });

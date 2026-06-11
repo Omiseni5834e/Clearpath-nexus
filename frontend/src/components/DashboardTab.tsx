@@ -202,7 +202,7 @@ export default function CommandDashboard() {
       <header className="px-6 py-3 bg-gradient-to-r from-blue-950 via-blue-900 to-indigo-950 border-b border-blue-800/60 flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-white">ClearPath Nexus</h1>
-          <p className="text-xs text-blue-300 font-mono">Load profiles · live tract routing</p>
+          <p className="text-xs text-blue-300 font-mono">Load profiles · live track routing</p>
         </div>
         <div className="flex items-center gap-3">
           {routeApproved ? (

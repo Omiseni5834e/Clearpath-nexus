@@ -21,7 +21,7 @@ export default function TrackIntelPanel({
 
   return (
     <div className="glass-panel rounded-xl p-4 flex flex-col gap-3">
-      <span className="text-xs font-mono text-blue-400 uppercase tracking-wider">Live Tract Intelligence</span>
+      <span className="text-xs font-mono text-blue-400 uppercase tracking-wider">Live Track Intelligence</span>
 
       {trainPosition ? (
         <div className="rounded-lg border border-blue-500/30 bg-blue-950/20 p-3 flex flex-col gap-1">

@@ -1,5 +1,5 @@
 import type { RouteSuggestResponse, TrainLocationInput } from '../types/route'
-import { evaluateRoute, suggestRoute } from '../services/api'
+import { evaluateRoute, suggestRoute } from './api'
 
 function mergeRouteResults(legs: RouteSuggestResponse[]): RouteSuggestResponse {
   if (legs.length === 0) {

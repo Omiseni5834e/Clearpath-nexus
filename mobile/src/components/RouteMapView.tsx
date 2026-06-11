@@ -6,7 +6,7 @@ import { CONDITION_SYMBOLS } from '../maps/mapSymbolGuide';
 import { ZONE_COLORS } from '../maps/darkMapStyle';
 import { colors } from '../theme/colors';
 import { ConditionIconVector } from './ConditionIcon';
-import MapLegend from './MapLegend';
+import { MapLegend } from './MapLegend';
 
 const STATUS_COLORS: Record<string, string> = {
   APPROVED: colors.approved,

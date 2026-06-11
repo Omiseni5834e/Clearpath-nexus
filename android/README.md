@@ -15,7 +15,7 @@ Internet on the phone is only needed for OpenStreetMap tiles on the Map tab.
 1. On your phone: **Settings → About phone** → tap Build number 7× to unlock Developer options  
 2. **Settings → Developer options** → enable **USB debugging**  
 3. Connect the phone via USB; accept the **Allow USB debugging** prompt  
-4. Open Android Studio → **File → Open** → `E:\clearpath-nexus\android`  
+4. Open Android Studio, then choose **File > Open** and select the `android` folder.
 5. Wait for Gradle sync  
 6. In the device dropdown (top toolbar), select **your phone** — not an emulator  
 7. Click **Run** (green play button)

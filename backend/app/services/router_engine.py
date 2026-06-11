@@ -123,7 +123,8 @@ def predict_transit_delay_minutes(
 
         confidence = "HIGH" if weather_risk < 30 and congestion_pct < 40 else "MEDIUM"
         return {"delay_minutes": total, "confidence": confidence}
-    return {"delay_minutes": 45, "confidence": "LOW"}
+    except Exception:
+        return {"delay_minutes": 45, "confidence": "LOW"}
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:

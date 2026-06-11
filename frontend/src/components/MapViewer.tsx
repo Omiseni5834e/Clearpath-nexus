@@ -101,7 +101,7 @@ export default function MapViewer({
   }
 
   return (
-    <APIProvider apiKey={API_KEY} libraries={['marker', 'maps']}>
+    <APIProvider apiKey={API_KEY} libraries={['marker']}>
       <MapCanvas
         segments={segments}
         stations={stations}

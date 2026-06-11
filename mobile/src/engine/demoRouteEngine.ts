@@ -2,6 +2,7 @@ import type {
   AlternateRoute,
   RouteEvaluateResponse,
   RouteSuggestResponse,
+  RouteStatus,
   SegmentPath,
   SegmentPhase,
   Station,
@@ -144,6 +145,7 @@ export function suggestRouteFromTrainLocation(
     historicalScore,
     clearanceFailed,
   );
+  const routeStatus = statusFromScore(reliability, clearanceFailed);
 
   const remainingKm = fullRoute.reduce((sum, r) => sum + segmentLengthKm(r.coords), 0);
   const estimatedHours = clearanceFailed ? undefined : estimateTransitHours(demoSegments, remainingKm);
@@ -186,7 +188,7 @@ export function suggestRouteFromTrainLocation(
   const segments: SegmentPath[] = fullRoute.map(({ segment, coords, phase }) => ({
     id: segment.id,
     status:
-      clearanceFailed && segment.id === clearance.blockingSegmentId ? 'HARD_BLOCKED' : clearance.status,
+      clearanceFailed && segment.id === clearance.blockingSegmentId ? 'HARD_BLOCKED' : routeStatus,
     coordinates: coords,
     phase,
     label: `${segment.sourceCode} → ${segment.destCode}`,
@@ -200,7 +202,7 @@ export function suggestRouteFromTrainLocation(
 
   return {
     route_id: `route-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    status: clearance.status,
+    status: routeStatus,
     reliability_score: reliability,
     blocking_segment_id: clearance.blockingSegmentId,
     estimated_hours: estimatedHours,
@@ -260,8 +262,12 @@ export function suggestRouteWithWaypoints(
   merged.track_details = legs.flatMap((leg) => leg.track_details);
   merged.environmental_alerts = [...new Set(legs.flatMap((leg) => leg.environmental_alerts))];
   merged.train_position = legs[0].train_position;
-  merged.reliability_score = Math.min(...legs.map((leg) => leg.reliability_score));
-  merged.status = legs.every((leg) => leg.status === 'APPROVED') ? 'APPROVED' : 'HARD_BLOCKED';
+  merged.reliability_score = Math.round(legs.reduce((sum, leg) => sum + leg.reliability_score, 0) / legs.length);
+  merged.status = legs.some((leg) => leg.status === 'HARD_BLOCKED')
+    ? 'HARD_BLOCKED'
+    : merged.reliability_score >= 65
+      ? 'APPROVED'
+      : 'CAUTION';
   merged.next_station = legs[0].next_station;
   return merged;
 }
@@ -428,7 +434,7 @@ function validateClearance(
   width: number,
   weight: number,
   route: DemoSegment[],
-): { status: 'APPROVED' | 'HARD_BLOCKED'; blockingSegmentId?: string } {
+): { status: RouteStatus; blockingSegmentId?: string } {
   for (const seg of route) {
     if (height > seg.maxHeight || width > seg.maxWidth || weight > seg.maxWeight) {
       return { status: 'HARD_BLOCKED', blockingSegmentId: seg.id };
@@ -519,6 +525,12 @@ function calculateReliability(
   if (clearanceFailed) return 0;
   const composite = 0.4 * weather + 0.3 * port + 0.15 * congestion + 0.15 * historical;
   return Math.ceil(composite);
+}
+
+function statusFromScore(score: number, clearanceFailed: boolean): RouteStatus {
+  if (clearanceFailed || score < 45) return 'HARD_BLOCKED';
+  if (score < 65) return 'CAUTION';
+  return 'APPROVED';
 }
 
 function applyThreatSimulation(
