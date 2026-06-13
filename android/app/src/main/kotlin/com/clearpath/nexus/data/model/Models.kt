@@ -44,3 +44,25 @@ data class EnvironmentalZone(
     val type: String,
     val coordinates: List<List<Double>>,
 )
+
+data class WeatherCondition(
+    val temp: Double,
+    val humidity: Int,
+    val windSpeed: Double,
+    val description: String,
+    val iconEmoji: String,
+    val conditionLabel: String,
+)
+
+data class AlternateRoute(
+    val id: String,
+    val label: String,
+    val segments: List<SegmentPath>,
+    val reliabilityScore: Int,
+    val weatherScore: Int,
+    val estimatedHours: Double,
+    val status: String,
+    val stationCodes: List<String>,
+    val midpoint: List<Double>,
+    val weatherCondition: WeatherCondition? = null,
+)

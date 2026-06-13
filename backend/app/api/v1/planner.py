@@ -305,8 +305,15 @@ async def suggest_route_from_position(
             continue
         alt_congestion = compute_congestion_score(path)
         alt_historical = compute_historical_score(path)
+        
+        # Calculate specific weather score for the alternate path midpoint
+        alt_mid_seg = path[len(path) // 2]
+        alt_mid_point = to_shape(alt_mid_seg.geom_path).interpolate(0.5, normalized=True)
+        alt_weather_data = await space_weather_service.fetch_route_environmental_risks(alt_mid_point.y, alt_mid_point.x)
+        alt_weather_score, _ = space_weather_service.weather_to_score(alt_weather_data, kp_data)
+        
         alt_reliability = calculate_route_reliability(
-            weather_score, port_score, alt_congestion, alt_historical, False
+            alt_weather_score, port_score, alt_congestion, alt_historical, False
         )
         label = " → ".join([path[0].source_station.code] + [s.dest_station.code for s in path])
         alternates.append(
@@ -315,6 +322,7 @@ async def suggest_route_from_position(
                 reliability_score=alt_reliability,
                 segment_ids=[s.id for s in path],
                 estimated_hours=estimate_transit_hours(path),
+                weather_score=alt_weather_score,
             )
         )
     alternates.sort(key=lambda a: a.reliability_score, reverse=True)

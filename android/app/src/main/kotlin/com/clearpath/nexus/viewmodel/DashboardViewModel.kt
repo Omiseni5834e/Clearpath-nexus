@@ -2,10 +2,14 @@ package com.clearpath.nexus.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.clearpath.nexus.data.api.SupabaseClient
 import com.clearpath.nexus.data.model.EnvironmentalZone
 import com.clearpath.nexus.data.model.RouteEvaluateResponse
+import com.clearpath.nexus.data.model.RouteEvaluationRow
+import com.clearpath.nexus.data.model.ScoreBreakdown
 import com.clearpath.nexus.data.model.Station
 import com.clearpath.nexus.data.repository.NexusRepository
+import io.github.jan.supabase.auth.auth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,6 +34,10 @@ data class DashboardUiState(
     val simulatedScore: Int? = null,
     val simAlerts: List<String> = emptyList(),
     val selectedTab: DashboardTab = DashboardTab.CONFIGURE,
+    val confirmedRouteLabel: String? = null,
+    val confirmedRouteId: String? = null,
+    val alternateRoutes: List<com.clearpath.nexus.data.model.AlternateRoute> = emptyList(),
+    val stops: List<String> = emptyList(),
     val environmentalZones: List<EnvironmentalZone> = listOf(
         EnvironmentalZone(
             id = "dust-west",
@@ -42,12 +50,16 @@ data class DashboardUiState(
             ),
         ),
     ),
+    val isSimulationMode: Boolean = false,
+    val estimatedTotalHours: Float? = null
 )
 
 enum class DashboardTab {
     CONFIGURE,
+    ROUTE_SELECTION,
     MAP,
     TELEMETRY,
+    USER,
 }
 
 class DashboardViewModel(
@@ -71,6 +83,7 @@ class DashboardViewModel(
     fun onSolarChange(value: Float) = _uiState.update { it.copy(solarKp = value) }
     fun onPortChange(value: Float) = _uiState.update { it.copy(portCongestion = value) }
     fun onTabSelected(tab: DashboardTab) = _uiState.update { it.copy(selectedTab = tab) }
+    fun onStopsChange(value: List<String>) = _uiState.update { it.copy(stops = value) }
 
     private fun loadStations() {
         viewModelScope.launch {
@@ -105,6 +118,7 @@ class DashboardViewModel(
                     sourceCode = state.sourceCode,
                     destCode = state.destCode,
                     trainArrivalHours = trainHours,
+                    stops = state.stops,
                 )
                 _uiState.update {
                     it.copy(
@@ -112,7 +126,7 @@ class DashboardViewModel(
                         result = result,
                         simulatedScore = null,
                         simAlerts = emptyList(),
-                        selectedTab = DashboardTab.MAP,
+                        selectedTab = DashboardTab.ROUTE_SELECTION,
                     )
                 }
             } catch (e: IllegalArgumentException) {
@@ -152,4 +166,77 @@ class DashboardViewModel(
             }
         }
     }
+
+    fun calculateEstimatedTime() {
+        val state = _uiState.value
+        val baseHours = (state.result?.estimatedHours ?: 0.0).toFloat()
+        // Add 0.5 hour per additional stop as heuristic
+        val extraHours = state.stops.size * 0.5f
+        val total = baseHours + extraHours
+        _uiState.update { it.copy(estimatedTotalHours = total) }
+    }
+
+    fun onRouteConfirmed(
+        route: com.clearpath.nexus.data.model.AlternateRoute,
+        allRoutes: List<com.clearpath.nexus.data.model.AlternateRoute>
+    ) {
+        val state = _uiState.value
+        _uiState.update {
+            it.copy(
+                result = RouteEvaluateResponse(
+                    routeId = route.id,
+                    status = route.status,
+                    reliabilityScore = route.reliabilityScore,
+                    estimatedHours = route.estimatedHours,
+                    scoreBreakdown = ScoreBreakdown(
+                        weather = route.weatherScore.toDouble(),
+                        port = 85.0,
+                        congestion = 72.0,
+                        historical = 90.0,
+                    ),
+                    segments = route.segments,
+                ),
+                confirmedRouteLabel = route.label,
+                confirmedRouteId = route.id,
+                alternateRoutes = allRoutes,
+                selectedTab = DashboardTab.MAP,
+            )
+        }
+        // Update estimated total hours after confirming route
+        calculateEstimatedTime()
+
+        // Save route evaluation to Supabase
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseClient.client.auth.currentUserOrNull()?.id
+                if (userId != null) {
+                    val height = state.height.toDoubleOrNull() ?: 0.0
+                    val width = state.width.toDoubleOrNull() ?: 0.0
+                    val weight = state.weight.toDoubleOrNull() ?: 0.0
+
+                    val row = RouteEvaluationRow(
+                        userId = userId,
+                        sourceCode = state.sourceCode,
+                        destCode = state.destCode,
+                        cargoHeight = height,
+                        cargoWidth = width,
+                        cargoWeight = weight,
+                        selectedRouteLabel = route.label,
+                        reliabilityScore = route.reliabilityScore,
+                        weatherScore = route.weatherScore,
+                        status = route.status,
+                        estimatedHours = route.estimatedHours
+                    )
+                    repository.saveRouteEvaluation(row)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun onBackFromRouteSelection() {
+        _uiState.update { it.copy(selectedTab = DashboardTab.CONFIGURE) }
+    }
 }
+

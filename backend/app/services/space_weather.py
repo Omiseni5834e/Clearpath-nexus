@@ -60,7 +60,34 @@ class SpaceWeatherService:
             return cached
 
         if not settings.OPENWEATHER_API_KEY:
-            return FALLBACK_WEATHER
+            try:
+                url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,visibility"
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    resp = await client.get(url)
+                    resp.raise_for_status()
+                    current = resp.json().get("current", {})
+                    owm_data = {
+                        "wind": {
+                            "speed": round(current.get("wind_speed_10m", 0) / 3.6, 2)  # km/h to m/s
+                        },
+                        "main": {
+                            "temp": current.get("temperature_2m", 25.0),
+                            "visibility": current.get("visibility", 10000),
+                            "humidity": current.get("relative_humidity_2m", 50)
+                        },
+                        "weather": [
+                            {
+                                "id": 500 if int(current.get("weather_code", 0)) >= 51 else 800,
+                                "main": "Precipitation" if int(current.get("weather_code", 0)) >= 51 else "Clear",
+                                "description": "precipitation" if int(current.get("weather_code", 0)) >= 51 else "clear sky"
+                            }
+                        ]
+                    }
+                    await self._cache_set(cache_key, owm_data)
+                    return owm_data
+            except Exception as exc:
+                logger.warning("Open-Meteo fallback risks fetch failed: %s", exc)
+                return FALLBACK_WEATHER
 
         url = "https://api.openweathermap.org/data/2.5/weather"
         params = {"lat": lat, "lon": lon, "appid": settings.OPENWEATHER_API_KEY, "units": "metric"}

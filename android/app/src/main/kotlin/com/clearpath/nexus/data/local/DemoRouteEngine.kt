@@ -1,5 +1,6 @@
 package com.clearpath.nexus.data.local
 
+import com.clearpath.nexus.data.model.AlternateRoute
 import com.clearpath.nexus.data.model.RouteEvaluateResponse
 import com.clearpath.nexus.data.model.ScoreBreakdown
 import com.clearpath.nexus.data.model.SegmentPath
@@ -59,17 +60,21 @@ object DemoRouteEngine {
         sourceCode: String,
         destCode: String,
         trainArrivalHours: Double,
+        stops: List<String> = emptyList(),
     ): RouteEvaluateResponse {
         val source = sourceCode.uppercase()
         val dest = destCode.uppercase()
+        val stopsUpper = stops.map { it.uppercase() }
 
-        if (stations.none { it.code == source } || stations.none { it.code == dest }) {
+        if (stations.none { it.code == source } || stations.none { it.code == dest } ||
+            stopsUpper.any { stop -> stations.none { it.code == stop } }
+        ) {
             throw IllegalArgumentException(
-                "Route error: Selected origin or destination coordinate falls outside mapped operational boundaries.",
+                "Route error: Selected origin, destination, or stops fall outside operational boundaries.",
             )
         }
 
-        val routeSegments = findRoute(source, dest)
+        val routeSegments = findRouteWithStops(source, dest, stopsUpper)
         if (routeSegments.isEmpty()) {
             throw IllegalArgumentException("No viable path fits criteria safely.")
         }
@@ -175,6 +180,20 @@ object DemoRouteEngine {
         return emptyList()
     }
 
+    private fun findRouteWithStops(source: String, dest: String, stops: List<String>): List<DemoSegment> {
+        val fullPath = mutableListOf<DemoSegment>()
+        var current = source
+        val targets = stops + dest
+        for (target in targets) {
+            val pathSegment = findRoute(current, target)
+            if (pathSegment.isEmpty()) return emptyList()
+            fullPath.addAll(pathSegment)
+            current = target
+        }
+        return fullPath
+    }
+
+
     private data class PortResult(val score: Double, val warning: String?)
 
     private fun computePortSyncScore(trainArrivalHours: Double): PortResult {
@@ -264,4 +283,179 @@ object DemoRouteEngine {
 
         return maxOf(0, (baseScore - penalty).toInt()) to alerts
     }
+
+    // ── Alternate Route Generation ────────────────────────────────────────
+
+    /**
+     * Generates 3–4 distinct route alternatives between source and dest.
+     * Each route uses a different corridor strategy.
+     */
+    fun findAlternateRoutes(
+        height: Double,
+        width: Double,
+        weight: Double,
+        sourceCode: String,
+        destCode: String,
+        trainArrivalHours: Double,
+        stops: List<String> = emptyList(),
+    ): List<AlternateRoute> {
+        val source = sourceCode.uppercase()
+        val dest = destCode.uppercase()
+        val stopsUpper = stops.map { it.uppercase() }
+        val results = mutableListOf<AlternateRoute>()
+        val usedPaths = mutableSetOf<String>()
+
+        // Strategy 1 — Primary (BFS shortest with stops)
+        val primarySegs = findRouteWithStops(source, dest, stopsUpper)
+        if (primarySegs.isNotEmpty()) {
+            val key = primarySegs.map { it.id }.joinToString(",")
+            usedPaths.add(key)
+            val waypoints = buildWaypoints(source, primarySegs)
+            results.add(
+                buildAlternate(
+                    id = "route-primary",
+                    label = "Primary via ${waypoints.drop(1).dropLast(1).joinToString("-").ifEmpty { "Direct" }}",
+                    demoSegments = primarySegs,
+                    waypoints = waypoints,
+                    height = height, width = width, weight = weight,
+                    trainArrivalHours = trainArrivalHours,
+                ),
+            )
+        }
+
+        // Strategy 2 — Via PUNE (southern corridor with stops)
+        val southernStops = if (source != "PUNE" && dest != "PUNE" && "PUNE" !in stopsUpper) {
+            listOf("PUNE") + stopsUpper
+        } else {
+            stopsUpper
+        }
+        val southernSegs = findRouteWithStops(source, dest, southernStops)
+        if (southernSegs.isNotEmpty()) {
+            val key = southernSegs.map { it.id }.joinToString(",")
+            if (key !in usedPaths) {
+                usedPaths.add(key)
+                val waypoints = buildWaypoints(source, southernSegs)
+                results.add(
+                    buildAlternate(
+                        id = "route-southern",
+                        label = "Southern via PUNE",
+                        demoSegments = southernSegs,
+                        waypoints = waypoints,
+                        height = height, width = width, weight = weight,
+                        trainArrivalHours = trainArrivalHours,
+                    ),
+                )
+            }
+        }
+
+        // Strategy 3 — Via BSL (western freight corridor with stops)
+        val westernStops = if (source != "BSL" && dest != "BSL" && "BSL" !in stopsUpper) {
+            listOf("BSL") + stopsUpper
+        } else {
+            stopsUpper
+        }
+        val westernSegs = findRouteWithStops(source, dest, westernStops)
+        if (westernSegs.isNotEmpty()) {
+            val key = westernSegs.map { it.id }.joinToString(",")
+            if (key !in usedPaths) {
+                usedPaths.add(key)
+                val waypoints = buildWaypoints(source, westernSegs)
+                results.add(
+                    buildAlternate(
+                        id = "route-western",
+                        label = "Western via BSL",
+                        demoSegments = westernSegs,
+                        waypoints = waypoints,
+                        height = height, width = width, weight = weight,
+                        trainArrivalHours = trainArrivalHours,
+                    ),
+                )
+            }
+        }
+
+        // Strategy 4 — Extended via KYN
+        val extendedStops = if (source != "KYN" && dest != "KYN" && "KYN" !in stopsUpper) {
+            listOf("KYN") + stopsUpper
+        } else {
+            stopsUpper
+        }
+        val extendedSegs = findRouteWithStops(source, dest, extendedStops)
+        if (extendedSegs.isNotEmpty()) {
+            val key = extendedSegs.map { it.id }.joinToString(",")
+            if (key !in usedPaths) {
+                usedPaths.add(key)
+                val waypoints = buildWaypoints(source, extendedSegs)
+                results.add(
+                    buildAlternate(
+                        id = "route-extended",
+                        label = "Extended via KYN",
+                        demoSegments = extendedSegs,
+                        waypoints = waypoints,
+                        height = height, width = width, weight = weight,
+                        trainArrivalHours = trainArrivalHours,
+                    ),
+                )
+            }
+        }
+
+        return results
+    }
+
+    private fun buildWaypoints(source: String, route: List<DemoSegment>): List<String> {
+        val codes = mutableListOf(source)
+        for (seg in route) {
+            if (seg.destCode !in codes) codes.add(seg.destCode)
+        }
+        return codes
+    }
+
+    private fun buildAlternate(
+        id: String,
+        label: String,
+        demoSegments: List<DemoSegment>,
+        waypoints: List<String>,
+        height: Double,
+        width: Double,
+        weight: Double,
+        trainArrivalHours: Double,
+    ): AlternateRoute {
+        val clearance = validateClearance(height, width, weight, demoSegments)
+        val clearanceFailed = clearance.status == "HARD_BLOCKED"
+
+        val weatherScore = 82
+        val portScore = computePortSyncScore(trainArrivalHours)
+        val congestionScore = computeCongestionScore(demoSegments)
+        val historicalScore = computeHistoricalScore(demoSegments)
+        val reliability = calculateReliability(
+            weatherScore.toDouble(), portScore.score, congestionScore, historicalScore, clearanceFailed,
+        )
+        val eta = if (!clearanceFailed) estimateTransitHours(demoSegments) else 0.0
+
+        val segmentPaths = demoSegments.map { seg ->
+            val status = if (clearanceFailed && seg.id == clearance.blockingSegmentId) {
+                "HARD_BLOCKED"
+            } else {
+                clearance.status
+            }
+            SegmentPath(seg.id, status, seg.coordinates)
+        }
+
+        // Compute geographic midpoint of all segment coordinates
+        val allCoords = demoSegments.flatMap { it.coordinates }
+        val midLat = allCoords.map { it[0] }.average()
+        val midLon = allCoords.map { it[1] }.average()
+
+        return AlternateRoute(
+            id = id,
+            label = label,
+            segments = segmentPaths,
+            reliabilityScore = reliability,
+            weatherScore = weatherScore,
+            estimatedHours = eta,
+            status = clearance.status,
+            stationCodes = waypoints,
+            midpoint = listOf(midLat, midLon),
+        )
+    }
 }
+

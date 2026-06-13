@@ -55,6 +55,7 @@ class AlternateRoute(BaseModel):
     reliability_score: int
     segment_ids: list[UUID]
     estimated_hours: float | None = None
+    weather_score: float | None = None
 
 
 class TrainPosition(BaseModel):

@@ -43,6 +43,7 @@ export interface AlternateRoute {
   reliability_score: number
   segment_ids: string[]
   estimated_hours?: number
+  weather_score?: number
 }
 
 export interface TrainPosition {
