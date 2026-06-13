@@ -270,4 +270,4 @@ MIT License
 
 > "Transform railway freight planning from reactive logistics management into proactive AI-driven operational intelligence."
 
-**ClearPath Nexus — Smarter Routes. Safer Deliveries. Predictable Operations. 🚆📡🌍**
+**"Every journey begins with a plan. For railway freight, that plan can be complex. ClearPath Nexus simplifies the process by helping teams find reliable routes, understand potential risks, and keep cargo moving smoothly from start to finish." 🚆📡🌍**
