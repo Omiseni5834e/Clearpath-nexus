@@ -1,10 +1,6 @@
 package com.clearpath.nexus.ui.components
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -24,9 +20,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.clearpath.nexus.data.model.Station
+
 import com.clearpath.nexus.ui.theme.AccentSafetyBlue
 import com.clearpath.nexus.ui.theme.PanelBorder
 import com.clearpath.nexus.ui.theme.PanelDark
@@ -44,6 +48,7 @@ fun ConfigPanel(
     destCode: String,
     trainHours: String,
     stations: List<Station>,
+    stops: List<String>,
     isLoading: Boolean,
     error: String?,
     onHeightChange: (String) -> Unit,
@@ -52,6 +57,8 @@ fun ConfigPanel(
     onSourceChange: (String) -> Unit,
     onDestChange: (String) -> Unit,
     onTrainHoursChange: (String) -> Unit,
+    onStopsChange: (List<String>) -> Unit,
+    onAddStopClick: () -> Unit,
     onEvaluate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -83,6 +90,54 @@ fun ConfigPanel(
         StationDropdown("Source Station", sourceCode, stationCodes, stations, onSourceChange)
         StationDropdown("Destination", destCode, stationCodes, stations, onDestChange)
 
+        // --- Waypoints / Stops section ---
+        if (stops.isNotEmpty()) {
+            Text(
+                text = "SELECTED WAYPOINTS",
+                color = TextLight,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+            )
+            stops.forEach { stopCode ->
+                val stationName = stations.find { it.code == stopCode }?.name ?: stopCode
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(PanelDark, RoundedCornerShape(6.dp))
+                        .border(1.dp, PanelBorder, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "$stopCode — $stationName",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    Text(
+                        text = "Remove",
+                        color = StatusBlockedRed,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.clickable {
+                            onStopsChange(stops.filter { it != stopCode })
+                        }
+                    )
+                }
+            }
+        }
+
+        Button(
+            onClick = onAddStopClick,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = PanelDark),
+            border = androidx.compose.foundation.BorderStroke(1.dp, PanelBorder)
+        ) {
+            Text("+ Add Stop / Destination", color = AccentSafetyBlue, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+        }
+
         OutlinedTextField(
             value = trainHours,
             onValueChange = onTrainHoursChange,
@@ -110,6 +165,7 @@ fun ConfigPanel(
             )
         }
     }
+
 }
 
 @Composable

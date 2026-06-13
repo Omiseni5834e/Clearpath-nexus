@@ -41,6 +41,9 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.Polyline
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 
 @Composable
 fun RouteMapView(
@@ -52,7 +55,6 @@ fun RouteMapView(
     estimatedTotalHours: Float? = null,
     modifier: Modifier = Modifier,
     onConfirm: () -> Unit = {},
-    onAddDestination: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val mapView = remember {
@@ -61,6 +63,22 @@ fun RouteMapView(
             setMultiTouchControls(true)
             controller.setZoom(5.5)
             controller.setCenter(GeoPoint(21.1458, 79.0882))
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, mapView) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> mapView.onResume()
+                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
+                Lifecycle.Event.ON_DESTROY -> mapView.onDetach()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -288,9 +306,6 @@ fun RouteMapView(
                 ) {
                     Button(onClick = onConfirm) {
                         Text("Confirm Route")
-                    }
-                    Button(onClick = onAddDestination) {
-                        Text("+ Add Destination")
                     }
                 }
             }

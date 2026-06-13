@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.clearpath.nexus.data.api.WeatherService
 import com.clearpath.nexus.data.model.AlternateRoute
+import com.clearpath.nexus.data.model.ScoreBreakdown
 import com.clearpath.nexus.data.repository.NexusRepository
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -85,10 +86,26 @@ class RouteSelectionViewModel(
                             }
                         }
 
+                        val updatedBreakdown = (route.scoreBreakdown ?: ScoreBreakdown(
+                            weather = weatherScore.toDouble(),
+                            port = 85.0,
+                            congestion = 72.0,
+                            historical = 90.0
+                        )).copy(weather = weatherScore.toDouble())
+
+                        val updatedReliability = if (route.status == "HARD_BLOCKED") {
+                            0
+                        } else {
+                            val composite = 0.40 * updatedBreakdown.weather + 0.30 * updatedBreakdown.port + 0.15 * updatedBreakdown.congestion + 0.15 * updatedBreakdown.historical
+                            kotlin.math.ceil(composite).toInt().coerceIn(0, 100)
+                        }
+
                         route.copy(
                             weatherCondition = condition,
                             weatherScore = weatherScore,
-                            segments = updatedSegments
+                            reliabilityScore = updatedReliability,
+                            segments = updatedSegments,
+                            scoreBreakdown = updatedBreakdown
                         )
                     }
                 }

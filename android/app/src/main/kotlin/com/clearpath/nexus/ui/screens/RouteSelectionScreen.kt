@@ -62,6 +62,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import com.clearpath.nexus.data.model.AlternateRoute
 import com.clearpath.nexus.ui.theme.AccentSafetyBlue
 import com.clearpath.nexus.ui.theme.PanelBorder
@@ -80,6 +87,10 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import androidx.activity.compose.BackHandler
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 
 // Route colors for up to 4 routes
 private val ROUTE_COLORS = listOf(
@@ -111,6 +122,10 @@ fun RouteSelectionScreen(
     routeViewModel: RouteSelectionViewModel = viewModel(),
 ) {
     val state by routeViewModel.uiState.collectAsState()
+
+    BackHandler {
+        onBack()
+    }
 
     LaunchedEffect(sourceCode, destCode, stops) {
         if (state.routes.isEmpty()) {
@@ -154,7 +169,8 @@ fun RouteSelectionScreen(
         bottomBar = {
             val selected = state.routes.find { it.id == state.selectedRouteId }
             if (selected != null) {
-                Box(
+                val totalEstimatedHours = selected.estimatedHours + (stops.size * 0.5)
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(
@@ -167,7 +183,66 @@ fun RouteSelectionScreen(
                             ),
                         )
                         .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
+                    // Estimated time + reliability summary row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "${"%.1f".format(totalEstimatedHours)}h",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Text(
+                                text = "Est. Total Time",
+                                color = TextMuted,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "${selected.reliabilityScore}",
+                                color = when {
+                                    selected.reliabilityScore >= 80 -> StatusApprovedGreen
+                                    selected.reliabilityScore >= 55 -> SolarRiskAmber
+                                    else -> StatusBlockedRed
+                                },
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Text(
+                                text = "Reliability",
+                                color = TextMuted,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "${selected.stationCodes.size}",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Text(
+                                text = "Stations",
+                                color = TextMuted,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                    }
+
                     Button(
                         onClick = { onRouteConfirmed(selected, state.routes) },
                         modifier = Modifier
@@ -522,6 +597,22 @@ private fun RouteComparisonMap(
         }
     }
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, mapView) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> mapView.onResume()
+                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
+                Lifecycle.Event.ON_DESTROY -> mapView.onDetach()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     DisposableEffect(routes, selectedRouteId) {
         mapView.overlays.clear()
 
@@ -630,39 +721,65 @@ private fun RouteComparisonMap(
 
 @Composable
 fun MapLegendOverlay(modifier: Modifier = Modifier) {
+    var isExpanded by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .background(PanelDark.copy(alpha = 0.9f), RoundedCornerShape(8.dp))
             .border(1.dp, PanelBorder, RoundedCornerShape(8.dp))
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
-            text = "ROUTE LEGEND",
-            color = Color.White,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(12.dp, 3.dp).background(AccentSafetyBlue))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Selected Route", color = Color.White, fontSize = 9.sp)
+        Row(
+            modifier = Modifier
+                .clickable { isExpanded = !isExpanded }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "ROUTE LEGEND",
+                color = Color.White,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Icon(
+                imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = if (isExpanded) "Collapse" else "Expand",
+                tint = AccentSafetyBlue,
+                modifier = Modifier.size(16.dp)
+            )
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(12.dp, 3.dp).background(StatusApprovedGreen))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("High Safety (Score ≥ 80)", color = Color.White, fontSize = 9.sp)
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(12.dp, 3.dp).background(SolarRiskAmber))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Medium Safety (Score 55-79)", color = Color.White, fontSize = 9.sp)
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(12.dp, 3.dp).background(StatusBlockedRed))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Low Safety (Score < 55)", color = Color.White, fontSize = 9.sp)
+
+        AnimatedVisibility(
+            visible = isExpanded,
+            enter = expandVertically(),
+            exit = shrinkVertically()
+        ) {
+            Column(
+                modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(12.dp, 3.dp).background(AccentSafetyBlue))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Selected Route", color = Color.White, fontSize = 9.sp)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(12.dp, 3.dp).background(StatusApprovedGreen))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("High Safety (Score ≥ 80)", color = Color.White, fontSize = 9.sp)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(12.dp, 3.dp).background(SolarRiskAmber))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Medium Safety (Score 55-79)", color = Color.White, fontSize = 9.sp)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(12.dp, 3.dp).background(StatusBlockedRed))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Low Safety (Score < 55)", color = Color.White, fontSize = 9.sp)
+                }
+            }
         }
     }
 }

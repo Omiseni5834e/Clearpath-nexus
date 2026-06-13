@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
@@ -33,6 +35,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,12 +47,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.clearpath.nexus.ui.components.ConfigPanel
+import com.clearpath.nexus.ui.components.LoadProfilesPanel
 import com.clearpath.nexus.ui.components.RouteMapView
 import com.clearpath.nexus.ui.components.TelemetryPanel
 import com.clearpath.nexus.ui.components.UserPanel
@@ -91,11 +96,44 @@ fun CommandDashboardScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.loadSavedProfiles(context)
+    }
+
+    LaunchedEffect(
+        state.height,
+        state.width,
+        state.weight,
+        state.sourceCode,
+        state.destCode,
+        state.trainHours,
+        state.stops,
+        state.selectedProfileId
+    ) {
+        viewModel.saveCurrentInputs(
+            context = context,
+            height = state.height,
+            width = state.width,
+            weight = state.weight,
+            source = state.sourceCode,
+            dest = state.destCode,
+            hours = state.trainHours,
+            stops = state.stops,
+            profileId = state.selectedProfileId
+        )
+    }
+
     val navProfileBitmap = remember(profileUriString) {
         if (!profileUriString.isNullOrEmpty()) {
             loadBitmapFromUri(context, profileUriString!!)
         } else {
             null
+        }
+    }
+
+    if (state.selectedTab != DashboardTab.CONFIGURE && state.selectedTab != DashboardTab.ROUTE_SELECTION) {
+        BackHandler {
+            viewModel.onTabSelected(DashboardTab.CONFIGURE)
         }
     }
 
@@ -113,6 +151,7 @@ fun CommandDashboardScreen(
             sourceCode = state.sourceCode,
             destCode = state.destCode,
             trainHours = hrs,
+            stops = state.stops,
             onRouteConfirmed = { route, allRoutes -> viewModel.onRouteConfirmed(route, allRoutes) },
             onBack = { viewModel.onBackFromRouteSelection() },
         )
@@ -122,26 +161,36 @@ fun CommandDashboardScreen(
     // ── Normal Dashboard ─────────────────────────────────────────────
     Scaffold(
         bottomBar = {
-            NavigationBar(containerColor = PanelDark) {
+            NavigationBar(
+                containerColor = PanelDark,
+                tonalElevation = 0.dp
+            ) {
                 NavigationBarItem(
                     selected = state.selectedTab == DashboardTab.CONFIGURE,
                     onClick = { viewModel.onTabSelected(DashboardTab.CONFIGURE) },
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "Configure") },
-                    label = { Text("Configure") },
+                    icon = { Icon(Icons.Default.Settings, contentDescription = "Configure", modifier = Modifier.size(20.dp)) },
+                    label = { Text("Configure", fontSize = 9.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Clip) },
                     colors = navColors(),
                 )
                 NavigationBarItem(
                     selected = state.selectedTab == DashboardTab.MAP,
                     onClick = { viewModel.onTabSelected(DashboardTab.MAP) },
-                    icon = { Icon(Icons.Default.Map, contentDescription = "Map") },
-                    label = { Text("Map") },
+                    icon = { Icon(Icons.Default.Map, contentDescription = "Map", modifier = Modifier.size(20.dp)) },
+                    label = { Text("Map", fontSize = 9.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Clip) },
                     colors = navColors(),
                 )
                 NavigationBarItem(
                     selected = state.selectedTab == DashboardTab.TELEMETRY,
                     onClick = { viewModel.onTabSelected(DashboardTab.TELEMETRY) },
-                    icon = { Icon(Icons.Default.Speed, contentDescription = "Telemetry") },
-                    label = { Text("Telemetry") },
+                    icon = { Icon(Icons.Default.Speed, contentDescription = "Telemetry", modifier = Modifier.size(20.dp)) },
+                    label = { Text("Telemetry", fontSize = 9.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Clip) },
+                    colors = navColors(),
+                )
+                NavigationBarItem(
+                    selected = state.selectedTab == DashboardTab.LOADS,
+                    onClick = { viewModel.onTabSelected(DashboardTab.LOADS) },
+                    icon = { Icon(Icons.Default.Inventory2, contentDescription = "Loads", modifier = Modifier.size(20.dp)) },
+                    label = { Text("Loads", fontSize = 9.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Clip) },
                     colors = navColors(),
                 )
                 NavigationBarItem(
@@ -152,14 +201,14 @@ fun CommandDashboardScreen(
                             Image(
                                 bitmap = navProfileBitmap.asImageBitmap(),
                                 contentDescription = "User",
-                                modifier = Modifier.size(24.dp).clip(CircleShape),
+                                modifier = Modifier.size(20.dp).clip(CircleShape),
                                 contentScale = ContentScale.Crop
                             )
                         } else {
-                            Icon(Icons.Default.AccountCircle, contentDescription = "User")
+                            Icon(Icons.Default.AccountCircle, contentDescription = "User", modifier = Modifier.size(20.dp))
                         }
                     },
-                    label = { Text("User") },
+                    label = { Text("User", fontSize = 9.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Clip) },
                     colors = navColors(),
                 )
             }
@@ -186,6 +235,7 @@ fun CommandDashboardScreen(
                     destCode = state.destCode,
                     trainHours = state.trainHours,
                     stations = state.stations,
+                    stops = state.stops,
                     isLoading = state.isLoading,
                     error = state.error,
                     onHeightChange = viewModel::onHeightChange,
@@ -194,6 +244,8 @@ fun CommandDashboardScreen(
                     onSourceChange = viewModel::onSourceChange,
                     onDestChange = viewModel::onDestChange,
                     onTrainHoursChange = viewModel::onTrainHoursChange,
+                    onStopsChange = viewModel::onStopsChange,
+                    onAddStopClick = { showAddDestinationDialog = true },
                     onEvaluate = viewModel::evaluateRoute,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -212,13 +264,11 @@ fun CommandDashboardScreen(
                         val label = state.confirmedRouteLabel ?: "Default"
                         android.widget.Toast.makeText(context, "Route confirmed: $label", android.widget.Toast.LENGTH_SHORT).show()
                     },
-                    onAddDestination = {
-                        showAddDestinationDialog = true
-                    }
                 )
 
                 DashboardTab.TELEMETRY -> TelemetryPanel(
                     result = state.result,
+                    activeProfile = state.loadProfiles.find { it.id == state.selectedProfileId },
                     stormSeverity = state.stormSeverity,
                     solarKp = state.solarKp,
                     portCongestion = state.portCongestion,
@@ -229,6 +279,17 @@ fun CommandDashboardScreen(
                     onSolarChange = viewModel::onSolarChange,
                     onPortChange = viewModel::onPortChange,
                     onSimulate = viewModel::simulateThreat,
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+                DashboardTab.LOADS -> LoadProfilesPanel(
+                    loadProfiles = state.loadProfiles,
+                    selectedProfileId = state.selectedProfileId,
+                    onProfileSelect = viewModel::selectLoadProfile,
+                    onProfileSave = { name, h, w, wt, comp, purp, notes ->
+                        viewModel.saveLoadProfile(context, name, h, w, wt, comp, purp, notes)
+                    },
+                    onProfileDelete = { id -> viewModel.deleteLoadProfile(context, id) },
                     modifier = Modifier.fillMaxSize(),
                 )
 
@@ -278,7 +339,6 @@ fun CommandDashboardScreen(
                                         val newStops = state.stops + station.code
                                         viewModel.onStopsChange(newStops)
                                         viewModel.calculateEstimatedTime()
-                                        viewModel.evaluateRoute()
                                         showAddDestinationDialog = false
                                     }
                                     .padding(vertical = 12.dp, horizontal = 8.dp),

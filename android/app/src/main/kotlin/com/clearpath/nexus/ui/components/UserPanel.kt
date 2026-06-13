@@ -38,8 +38,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.jan.supabase.auth.auth
 import com.clearpath.nexus.data.api.SupabaseClient
 import com.clearpath.nexus.ui.theme.*
+import com.clearpath.nexus.R
+import androidx.compose.ui.res.painterResource
 
 fun loadBitmapFromUri(context: Context, uriString: String): Bitmap? {
     return try {
@@ -104,6 +107,15 @@ fun UserPanel(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(bottom = 8.dp)
         ) {
+            Image(
+                painter = painterResource(id = R.drawable.app_logo),
+                contentDescription = "ClearPath Nexus Logo",
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .border(2.dp, AccentSafetyBlue, CircleShape)
+            )
+            Spacer(modifier = Modifier.height(10.dp))
             Text(
                 text = "CLEARPATH NEXUS",
                 fontSize = 22.sp,
@@ -111,6 +123,7 @@ fun UserPanel(
                 color = Color.White,
                 letterSpacing = 2.sp
             )
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "AI-Powered Railway Intelligence Command Center",
                 fontSize = 10.sp,

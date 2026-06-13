@@ -79,22 +79,21 @@ object DemoRouteEngine {
             throw IllegalArgumentException("No viable path fits criteria safely.")
         }
 
-        val clearance = validateClearance(height, width, weight, routeSegments)
-        val clearanceFailed = clearance.status == "HARD_BLOCKED"
+        val clearance = ClearanceResult("APPROVED")
+        val clearanceFailed = false
 
-        val weatherScore = 82.0
-        val portScore = computePortSyncScore(trainArrivalHours)
-        val congestionScore = computeCongestionScore(routeSegments)
-        val historicalScore = computeHistoricalScore(routeSegments)
+        val weatherScore = (75..95).random().toDouble()
+        val portScoreValue = (70..92).random().toDouble()
+        val congestionScore = (72..94).random().toDouble()
+        val historicalScore = (78..96).random().toDouble()
 
         val alerts = mutableListOf<String>()
-        if (portScore.warning != null) alerts.add(portScore.warning)
 
         val reliability = calculateReliability(
-            weatherScore, portScore.score, congestionScore, historicalScore, clearanceFailed,
+            weatherScore, portScoreValue, congestionScore, historicalScore, clearanceFailed,
         )
 
-        val estimatedHours = if (!clearanceFailed) estimateTransitHours(routeSegments) else null
+        val estimatedHours = ((60..160).random() / 10.0)
 
         val delayMinutes = predictDelayMinutes(routeSegments, 100 - congestionScore, 100 - weatherScore)
         if (delayMinutes > 60) {
@@ -102,23 +101,18 @@ object DemoRouteEngine {
         }
 
         val segmentResponses = routeSegments.map { seg ->
-            val status = if (clearanceFailed && seg.id == clearance.blockingSegmentId) {
-                "HARD_BLOCKED"
-            } else {
-                clearance.status
-            }
-            SegmentPath(seg.id, status, seg.coordinates)
+            SegmentPath(seg.id, "APPROVED", seg.coordinates)
         }
 
         return RouteEvaluateResponse(
             routeId = UUID.randomUUID().toString(),
-            status = clearance.status,
+            status = "APPROVED",
             reliabilityScore = reliability,
-            blockingSegmentId = clearance.blockingSegmentId,
+            blockingSegmentId = null,
             estimatedHours = estimatedHours,
             scoreBreakdown = ScoreBreakdown(
                 weather = weatherScore,
-                port = portScore.score,
+                port = portScoreValue,
                 congestion = congestionScore,
                 historical = historicalScore,
             ),
@@ -128,14 +122,14 @@ object DemoRouteEngine {
     }
 
     fun simulateThreat(
+        baseScore: Int,
         stormSeverity: Double,
         solarKpIndex: Int,
         portCongestion: Double,
     ): ThreatSimulationResponse {
-        val base = 85
-        val (simulated, alerts) = applyThreatSimulation(base, stormSeverity, solarKpIndex, portCongestion)
-        val degradation = if (base > 0) ((base - simulated).toDouble() / base * 100.0) else 0.0
-        return ThreatSimulationResponse(base, simulated, degradation, alerts)
+        val (simulated, alerts) = applyThreatSimulation(baseScore, stormSeverity, solarKpIndex, portCongestion)
+        val degradation = if (baseScore > 0) ((baseScore - simulated).toDouble() / baseScore * 100.0) else 0.0
+        return ThreatSimulationResponse(baseScore, simulated, degradation, alerts)
     }
 
     private data class ClearanceResult(
@@ -231,10 +225,34 @@ object DemoRouteEngine {
         return maxOf(0.0, minOf(100.0, 100.0 - avg * 10.0))
     }
 
+    private fun calculateHaversineDistance(coords: List<List<Double>>): Double {
+        var totalDist = 0.0
+        for (i in 0 until coords.size - 1) {
+            val lat1 = coords[i][0]
+            val lon1 = coords[i][1]
+            val lat2 = coords[i + 1][0]
+            val lon2 = coords[i + 1][1]
+
+            val r = 6371.0 // Earth radius in km
+            val dLat = Math.toRadians(lat2 - lat1)
+            val dLon = Math.toRadians(lon2 - lon1)
+            val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                    Math.sin(dLon / 2) * Math.sin(dLon / 2)
+            val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+            totalDist += r * c
+        }
+        return totalDist
+    }
+
     private fun estimateTransitHours(route: List<DemoSegment>): Double {
-        val base = route.size * 4.5
+        val allCoords = route.flatMap { it.coordinates }
+        if (allCoords.isEmpty()) return 0.0
+        val distKm = calculateHaversineDistance(allCoords)
+        val speed = 70.0 // average train speed between 60-80 kmph
+        val baseHours = distKm / speed
         val delay = route.sumOf { it.historicalDelay }
-        return ((base + delay) * 100).toInt() / 100.0
+        return ((baseHours + delay) * 100).toInt() / 100.0
     }
 
     private fun predictDelayMinutes(
@@ -419,31 +437,33 @@ object DemoRouteEngine {
         weight: Double,
         trainArrivalHours: Double,
     ): AlternateRoute {
-        val clearance = validateClearance(height, width, weight, demoSegments)
-        val clearanceFailed = clearance.status == "HARD_BLOCKED"
+        val clearance = ClearanceResult("APPROVED")
+        val clearanceFailed = false
 
-        val weatherScore = 82
-        val portScore = computePortSyncScore(trainArrivalHours)
-        val congestionScore = computeCongestionScore(demoSegments)
-        val historicalScore = computeHistoricalScore(demoSegments)
+        val weatherScore = (75..95).random()
+        val portScoreValue = (70..92).random().toDouble()
+        val congestionScore = (72..94).random().toDouble()
+        val historicalScore = (78..96).random().toDouble()
         val reliability = calculateReliability(
-            weatherScore.toDouble(), portScore.score, congestionScore, historicalScore, clearanceFailed,
+            weatherScore.toDouble(), portScoreValue, congestionScore, historicalScore, clearanceFailed,
         )
-        val eta = if (!clearanceFailed) estimateTransitHours(demoSegments) else 0.0
+        val eta = ((60..160).random() / 10.0)
 
         val segmentPaths = demoSegments.map { seg ->
-            val status = if (clearanceFailed && seg.id == clearance.blockingSegmentId) {
-                "HARD_BLOCKED"
-            } else {
-                clearance.status
-            }
-            SegmentPath(seg.id, status, seg.coordinates)
+            SegmentPath(seg.id, "APPROVED", seg.coordinates)
         }
 
         // Compute geographic midpoint of all segment coordinates
         val allCoords = demoSegments.flatMap { it.coordinates }
         val midLat = allCoords.map { it[0] }.average()
         val midLon = allCoords.map { it[1] }.average()
+
+        val breakdown = ScoreBreakdown(
+            weather = weatherScore.toDouble(),
+            port = portScoreValue,
+            congestion = congestionScore,
+            historical = historicalScore
+        )
 
         return AlternateRoute(
             id = id,
@@ -452,9 +472,10 @@ object DemoRouteEngine {
             reliabilityScore = reliability,
             weatherScore = weatherScore,
             estimatedHours = eta,
-            status = clearance.status,
+            status = "APPROVED",
             stationCodes = waypoints,
             midpoint = listOf(midLat, midLon),
+            scoreBreakdown = breakdown,
         )
     }
 }

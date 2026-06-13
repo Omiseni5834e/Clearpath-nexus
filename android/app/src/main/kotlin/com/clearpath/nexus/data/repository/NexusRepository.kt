@@ -38,12 +38,13 @@ class NexusRepository {
     }
 
     suspend fun simulateThreat(
+        baseScore: Int,
         stormSeverity: Double,
         solarKpIndex: Int,
         portCongestion: Double,
     ): ThreatSimulationResponse {
         delay(300)
-        return DemoRouteEngine.simulateThreat(stormSeverity, solarKpIndex, portCongestion)
+        return DemoRouteEngine.simulateThreat(baseScore, stormSeverity, solarKpIndex, portCongestion)
     }
 
     suspend fun fetchAlternateRoutes(

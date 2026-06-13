@@ -1,5 +1,20 @@
 package com.clearpath.nexus.data.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class LoadProfile(
+    val id: String,
+    val name: String,
+    val height: Double,
+    val width: Double,
+    val weight: Double,
+    val compartments: Int,
+    val compartmentPurpose: String = "",
+    val notes: String = "",
+    val createdAt: String
+)
+
 data class RouteEvaluateResponse(
     val routeId: String,
     val status: String,
@@ -65,4 +80,5 @@ data class AlternateRoute(
     val stationCodes: List<String>,
     val midpoint: List<Double>,
     val weatherCondition: WeatherCondition? = null,
+    val scoreBreakdown: ScoreBreakdown? = null,
 )

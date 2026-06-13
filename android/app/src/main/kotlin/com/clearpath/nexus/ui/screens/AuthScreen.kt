@@ -6,6 +6,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.clearpath.nexus.R
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
@@ -54,6 +59,15 @@ fun AuthScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Header
+            Image(
+                painter = painterResource(id = R.drawable.app_logo),
+                contentDescription = "ClearPath Nexus Logo",
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .border(2.dp, AccentSafetyBlue, CircleShape)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = "CLEARPATH NEXUS",
                 fontSize = 24.sp,
@@ -69,7 +83,7 @@ fun AuthScreen(
                 color = TextLight,
                 textAlign = TextAlign.Center
             )
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             // Switch Tab Row
             Row(

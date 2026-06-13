@@ -3,13 +3,16 @@ package com.clearpath.nexus.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.clearpath.nexus.data.api.SupabaseClient
+import com.clearpath.nexus.data.api.WeatherService
 import com.clearpath.nexus.data.model.EnvironmentalZone
 import com.clearpath.nexus.data.model.RouteEvaluateResponse
 import com.clearpath.nexus.data.model.RouteEvaluationRow
+import com.clearpath.nexus.data.model.LoadProfile
 import com.clearpath.nexus.data.model.ScoreBreakdown
 import com.clearpath.nexus.data.model.Station
 import com.clearpath.nexus.data.repository.NexusRepository
 import io.github.jan.supabase.auth.auth
+import kotlinx.serialization.encodeToString
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,7 +54,9 @@ data class DashboardUiState(
         ),
     ),
     val isSimulationMode: Boolean = false,
-    val estimatedTotalHours: Float? = null
+    val estimatedTotalHours: Float? = null,
+    val loadProfiles: List<LoadProfile> = emptyList(),
+    val selectedProfileId: String? = null,
 )
 
 enum class DashboardTab {
@@ -59,6 +64,7 @@ enum class DashboardTab {
     ROUTE_SELECTION,
     MAP,
     TELEMETRY,
+    LOADS,
     USER,
 }
 
@@ -120,10 +126,35 @@ class DashboardViewModel(
                     trainArrivalHours = trainHours,
                     stops = state.stops,
                 )
+
+                // Fetch weather condition for coordinates midpoint and recalculate score breakdown
+                val allCoords = result.segments.flatMap { it.coordinates }
+                val weatherCondition = if (allCoords.isNotEmpty()) {
+                    val midLat = allCoords.map { it[0] }.average()
+                    val midLon = allCoords.map { it[1] }.average()
+                    repository.fetchWeatherForRoute(midLat, midLon)
+                } else {
+                    null
+                }
+
+                val weatherScore = WeatherService.weatherToScore(weatherCondition)
+                val updatedReliability = if (result.status == "HARD_BLOCKED") {
+                    0
+                } else {
+                    val baseComp = result.reliabilityScore.toDouble() - (0.40 * 82.0) + (0.40 * weatherScore)
+                    kotlin.math.ceil(baseComp).toInt().coerceIn(0, 100)
+                }
+
+                val finalResult = result.copy(
+                    reliabilityScore = updatedReliability,
+                    scoreBreakdown = result.scoreBreakdown?.copy(weather = weatherScore.toDouble())
+                        ?: ScoreBreakdown(weather = weatherScore.toDouble(), port = 85.0, congestion = 72.0, historical = 90.0)
+                )
+
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        result = result,
+                        result = finalResult,
                         simulatedScore = null,
                         simAlerts = emptyList(),
                         selectedTab = DashboardTab.ROUTE_SELECTION,
@@ -146,10 +177,12 @@ class DashboardViewModel(
 
     fun simulateThreat() {
         val state = _uiState.value
+        val baseScore = state.result?.reliabilityScore ?: 85
         viewModelScope.launch {
             _uiState.update { it.copy(simLoading = true) }
             try {
                 val response = repository.simulateThreat(
+                    baseScore = baseScore,
                     stormSeverity = state.stormSeverity.toDouble(),
                     solarKpIndex = state.solarKp.toInt(),
                     portCongestion = state.portCongestion.toDouble(),
@@ -188,7 +221,9 @@ class DashboardViewModel(
                     status = route.status,
                     reliabilityScore = route.reliabilityScore,
                     estimatedHours = route.estimatedHours,
-                    scoreBreakdown = ScoreBreakdown(
+                    scoreBreakdown = route.scoreBreakdown?.copy(
+                        weather = route.weatherScore.toDouble()
+                    ) ?: ScoreBreakdown(
                         weather = route.weatherScore.toDouble(),
                         port = 85.0,
                         congestion = 72.0,
@@ -237,6 +272,162 @@ class DashboardViewModel(
 
     fun onBackFromRouteSelection() {
         _uiState.update { it.copy(selectedTab = DashboardTab.CONFIGURE) }
+    }
+
+    fun loadSavedProfiles(context: android.content.Context) {
+        val sharedPrefs = context.getSharedPreferences("clearpath_prefs", android.content.Context.MODE_PRIVATE)
+        val jsonStr = sharedPrefs.getString("load_profiles", null)
+        val list = if (!jsonStr.isNullOrEmpty()) {
+            try {
+                kotlinx.serialization.json.Json.decodeFromString<List<LoadProfile>>(jsonStr)
+            } catch (e: Exception) {
+                emptyList()
+            }
+        } else {
+            // Seed a default profile if none exists
+            val defaultProfiles = listOf(
+                LoadProfile(
+                    id = "lp-std",
+                    name = "Standard Container",
+                    height = 4.5,
+                    width = 3.2,
+                    weight = 120.0,
+                    compartments = 1,
+                    compartmentPurpose = "General cargo",
+                    notes = "Standard ISO dry van",
+                    createdAt = "2026-06-13T00:00:00Z"
+                )
+            )
+            try {
+                val seedStr = kotlinx.serialization.json.Json.encodeToString(defaultProfiles)
+                sharedPrefs.edit().putString("load_profiles", seedStr).apply()
+            } catch (e: Exception) {}
+            defaultProfiles
+        }
+
+        // Load saved inputs
+        val height = sharedPrefs.getString("input_height", "4.8") ?: "4.8"
+        val width = sharedPrefs.getString("input_width", "3.2") ?: "3.2"
+        val weight = sharedPrefs.getString("input_weight", "120") ?: "120"
+        val source = sharedPrefs.getString("input_source", "NGP") ?: "NGP"
+        val dest = sharedPrefs.getString("input_dest", "JNPT") ?: "JNPT"
+        val hours = sharedPrefs.getString("input_hours", "24") ?: "24"
+        val profileId = sharedPrefs.getString("input_profile_id", null)
+        val stopsJson = sharedPrefs.getString("input_stops", null)
+        val stops = if (!stopsJson.isNullOrEmpty()) {
+            try {
+                kotlinx.serialization.json.Json.decodeFromString<List<String>>(stopsJson)
+            } catch (e: Exception) {
+                emptyList()
+            }
+        } else {
+            emptyList()
+        }
+
+        _uiState.update {
+            it.copy(
+                loadProfiles = list,
+                height = height,
+                width = width,
+                weight = weight,
+                sourceCode = source,
+                destCode = dest,
+                trainHours = hours,
+                selectedProfileId = profileId,
+                stops = stops
+            )
+        }
+    }
+
+    fun saveCurrentInputs(
+        context: android.content.Context,
+        height: String,
+        width: String,
+        weight: String,
+        source: String,
+        dest: String,
+        hours: String,
+        stops: List<String>,
+        profileId: String?
+    ) {
+        val sharedPrefs = context.getSharedPreferences("clearpath_prefs", android.content.Context.MODE_PRIVATE)
+        try {
+            val stopsJson = kotlinx.serialization.json.Json.encodeToString(stops)
+            sharedPrefs.edit()
+                .putString("input_height", height)
+                .putString("input_width", width)
+                .putString("input_weight", weight)
+                .putString("input_source", source)
+                .putString("input_dest", dest)
+                .putString("input_hours", hours)
+                .putString("input_stops", stopsJson)
+                .putString("input_profile_id", profileId)
+                .apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun saveProfilesList(context: android.content.Context, list: List<LoadProfile>) {
+        val sharedPrefs = context.getSharedPreferences("clearpath_prefs", android.content.Context.MODE_PRIVATE)
+        try {
+            val jsonStr = kotlinx.serialization.json.Json.encodeToString(list)
+            sharedPrefs.edit().putString("load_profiles", jsonStr).apply()
+            _uiState.update { it.copy(loadProfiles = list) }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun saveLoadProfile(
+        context: android.content.Context,
+        name: String,
+        height: Double,
+        width: Double,
+        weight: Double,
+        compartments: Int,
+        purpose: String,
+        notes: String
+    ) {
+        val current = _uiState.value.loadProfiles.toMutableList()
+        val newProfile = LoadProfile(
+            id = "lp-${System.currentTimeMillis()}",
+            name = name,
+            height = height,
+            width = width,
+            weight = weight,
+            compartments = compartments,
+            compartmentPurpose = purpose,
+            notes = notes,
+            createdAt = "2026-06-13T00:00:00Z"
+        )
+        current.add(newProfile)
+        saveProfilesList(context, current)
+        selectLoadProfile(newProfile.id)
+    }
+
+    fun deleteLoadProfile(context: android.content.Context, id: String) {
+        val current = _uiState.value.loadProfiles.filter { it.id != id }
+        saveProfilesList(context, current)
+        if (_uiState.value.selectedProfileId == id) {
+            _uiState.update { it.copy(selectedProfileId = null) }
+        }
+    }
+
+    fun selectLoadProfile(id: String) {
+        val profile = _uiState.value.loadProfiles.find { it.id == id }
+        if (profile != null) {
+            _uiState.update {
+                it.copy(
+                    selectedProfileId = id,
+                    height = profile.height.toString(),
+                    width = profile.width.toString(),
+                    weight = profile.weight.toString()
+                )
+            }
+        } else {
+            _uiState.update { it.copy(selectedProfileId = null) }
+        }
     }
 }
 
